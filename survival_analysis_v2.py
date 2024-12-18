@@ -162,44 +162,44 @@ class CrossValidator:
 
 
 # Example usage
-if __name__ == "__main__":
-    # Load data
-    data = pd.read_csv("C:/Users/user/Desktop/Survival_Data/DISEASE/colon.csv")
-    duration_col = "stime"
-    event_col = "event_inc"
-    frailty_col = "gu_encoded"
+# if __name__ == "__main__":
+#     # Load data
+#     data = pd.read_csv("C:/Users/user/Desktop/Survival_Data/DISEASE/colon.csv")
+#     duration_col = "stime"
+#     event_col = "event_inc"
+#     frailty_col = "gu_encoded"
 
-    # Preprocess data
-    data = data[
-        [
-            "sex",
-            "tx_1",
-            "tx_2",
-            "tx_3",
-            "tx_4",
-            "tx_5",
-            "seer_TF",
-            "gu_encoded",
-            "stime",
-            "event_inc",
-        ]
-    ]
-    data["stime"] = data["stime"].apply(lambda x: 0.01 if x <= 0 else x)
+#     # Preprocess data
+#     data = data[
+#         [
+#             "sex",
+#             "tx_1",
+#             "tx_2",
+#             "tx_3",
+#             "tx_4",
+#             "tx_5",
+#             "seer_TF",
+#             "gu_encoded",
+#             "stime",
+#             "event_inc",
+#         ]
+#     ]
+#     data["stime"] = data["stime"].apply(lambda x: 0.01 if x <= 0 else x)
 
-    # Cross-validation
-    cv = CrossValidator(data, duration_col, event_col)
+#     # Cross-validation
+#     cv = CrossValidator(data, duration_col, event_col)
 
-    # Evaluate Cox Proportional Hazards Model
-    cox_c_indices = cv.cross_validate(CoxPHModel)
-    print("Cox Proportional Hazards C-index:", np.mean(cox_c_indices))
-    cv.plot_c_index(cox_c_indices, "Cox Proportional Hazards")
+#     # Evaluate Cox Proportional Hazards Model
+#     cox_c_indices = cv.cross_validate(CoxPHModel)
+#     print("Cox Proportional Hazards C-index:", np.mean(cox_c_indices))
+#     cv.plot_c_index(cox_c_indices, "Cox Proportional Hazards")
 
-    # Evaluate Random Survival Forest Model
-    rsf_c_indices = cv.cross_validate(RandomSurvivalForestModel, n_estimators=200, random_state=42)
-    print("Random Survival Forest C-index:", np.mean(rsf_c_indices))
-    cv.plot_c_index(rsf_c_indices, "Random Survival Forest")
+#     # Evaluate Random Survival Forest Model
+#     rsf_c_indices = cv.cross_validate(RandomSurvivalForestModel, n_estimators=200, random_state=42)
+#     print("Random Survival Forest C-index:", np.mean(rsf_c_indices))
+#     cv.plot_c_index(rsf_c_indices, "Random Survival Forest")
 
-    # Compute AUC for RSF
-    time_points = [12, 24, 36]
-    rsf_auc = cv.compute_auc(RandomSurvivalForestModel, time_points, n_splits=5, n_estimators=200, random_state=42)
-    print("RSF Time-dependent AUC:", rsf_auc)
+#     # Compute AUC for RSF
+#     time_points = [12, 24, 36]
+#     rsf_auc = cv.compute_auc(RandomSurvivalForestModel, time_points, n_splits=5, n_estimators=200, random_state=42)
+#     print("RSF Time-dependent AUC:", rsf_auc)
