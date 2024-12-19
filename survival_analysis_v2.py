@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.model_selection import KFold
 from lifelines import CoxPHFitter, WeibullAFTFitter, LogNormalAFTFitter
 from sksurv.ensemble import RandomSurvivalForest
-from sksurv.metrics import concordance_index_censored, cumulative_dynamic_auc
+from sksurv.metrics import concordance_index_censored, cumulative_dynamic_auc, brier_score
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -130,10 +130,26 @@ class CrossValidator:
         )[0]
         return c_index
 
+    def calculate_brier_score(self, model, test_data, times):
+        # Brier Score 계산
+        y_test_structured = np.array(
+            [
+                (row[self.event_col] == 1, row[self.duration_col])
+                for _, row in test_data.iterrows()
+            ],
+            dtype=[("event", bool), ("time", float)],
+        )
+        survival_probs = model.model.predict_survival_function(
+            test_data.drop(columns=[self.duration_col, self.event_col]), times=times
+        ).T
+        brier_scores = brier_score(y_test_structured, survival_probs, times=times)
+        return brier_scores
+
     def cross_validate(self, model_class, n_splits=5, **model_kwargs):
         # 전체 교차 검증 프로세스
         kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         c_indices = []
+        brier_scores_list = []
 
         for train_index, test_index in kf.split(self.data):
             train_data = self.data.iloc[train_index]
@@ -144,56 +160,14 @@ class CrossValidator:
 
             # 2. 모델 평가
             c_index = self.evaluate_model(model, test_data)
-
-            # 3. 결과 저장
             c_indices.append(c_index)
 
-        return c_indices
+            # 3. Brier Score 계산
+            times = np.linspace(1, test_data[self.duration_col].max(), 50)
+            brier_scores = self.calculate_brier_score(model, test_data, times)
+            brier_scores_list.append(brier_scores)
 
-    def compute_auc(self, model_class, time_points, n_splits=5, **model_kwargs):
-        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-        auc_results = []
-
-        for train_index, test_index in kf.split(self.data):
-            train_data = self.data.iloc[train_index]
-            test_data = self.data.iloc[test_index]
-
-            model = model_class(self.duration_col, self.event_col, **model_kwargs)
-            model.fit(train_data)
-
-            if isinstance(model, RandomSurvivalForestModel):
-                X_train = train_data.drop(columns=[self.duration_col, self.event_col])
-                X_test = test_data.drop(columns=[self.duration_col, self.event_col])
-                y_train = np.array(
-                    [
-                        (row[self.event_col] == 1, row[self.duration_col])
-                        for _, row in train_data.iterrows()
-                    ],
-                    dtype=[("event", bool), ("time", float)],
-                )
-                y_test = np.array(
-                    [
-                        (row[self.event_col] == 1, row[self.duration_col])
-                        for _, row in test_data.iterrows()
-                    ],
-                    dtype=[("event", bool), ("time", float)],
-                )
-
-                survival_functions = model.model.predict_survival_function(X_test)
-                predictions = np.row_stack(
-                    [fn(time_points) for fn in survival_functions]
-                )
-
-                for time_point in time_points:
-                    auc, _ = cumulative_dynamic_auc(
-                        y_train,
-                        y_test,
-                        predictions[:, time_points.index(time_point)],
-                        time_point,
-                    )
-                    auc_results.append((time_point, auc))
-
-        return auc_results
+        return c_indices, brier_scores_list
 
     def plot_c_index(self, c_indices, model_name):
         """
@@ -208,6 +182,25 @@ class CrossValidator:
         plt.ylabel("C-index")
         plt.title(f"Cross-Validation C-index Scores for {model_name}")
         plt.grid(axis="y", linestyle="--", alpha=0.7)
+        plt.show()
+
+    def plot_brier_scores(self, brier_scores_list, times, model_name):
+        """
+        Plot the average Brier scores over time for the selected model.
+
+        Parameters:
+        - brier_scores_list: A list of Brier scores for each fold.
+        - times: Array of time points.
+        - model_name: The name of the model for labeling.
+        """
+        mean_brier_scores = np.mean(brier_scores_list, axis=0)
+        plt.figure(figsize=(10, 5))
+        plt.plot(times, mean_brier_scores, label=f"{model_name} Brier Score")
+        plt.title(f"Brier Score over Time ({model_name})")
+        plt.xlabel("Time")
+        plt.ylabel("Brier Score")
+        plt.legend()
+        plt.grid()
         plt.show()
 
 
@@ -238,46 +231,3 @@ class SurvivalDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.X[idx], self.durations[idx], self.events[idx]
-
-# Example usage
-# if __name__ == "__main__":
-#     # Load data
-#     data = pd.read_csv("C:/Users/user/Desktop/Survival_Data/DISEASE/colon.csv")
-#     duration_col = "stime"
-#     event_col = "event_inc"
-#     frailty_col = "gu_encoded"
-
-#     # Preprocess data
-#     data = data[
-#         [
-#             "sex",
-#             "tx_1",
-#             "tx_2",
-#             "tx_3",
-#             "tx_4",
-#             "tx_5",
-#             "seer_TF",
-#             "gu_encoded",
-#             "stime",
-#             "event_inc",
-#         ]
-#     ]
-#     data["stime"] = data["stime"].apply(lambda x: 0.01 if x <= 0 else x)
-
-#     # Cross-validation
-#     cv = CrossValidator(data, duration_col, event_col)
-
-#     # Evaluate Cox Proportional Hazards Model
-#     cox_c_indices = cv.cross_validate(CoxPHModel)
-#     print("Cox Proportional Hazards C-index:", np.mean(cox_c_indices))
-#     cv.plot_c_index(cox_c_indices, "Cox Proportional Hazards")
-
-#     # Evaluate Random Survival Forest Model
-#     rsf_c_indices = cv.cross_validate(RandomSurvivalForestModel, n_estimators=200, random_state=42)
-#     print("Random Survival Forest C-index:", np.mean(rsf_c_indices))
-#     cv.plot_c_index(rsf_c_indices, "Random Survival Forest")
-
-#     # Compute AUC for RSF
-#     time_points = [12, 24, 36]
-#     rsf_auc = cv.compute_auc(RandomSurvivalForestModel, time_points, n_splits=5, n_estimators=200, random_state=42)
-#     print("RSF Time-dependent AUC:", rsf_auc)
