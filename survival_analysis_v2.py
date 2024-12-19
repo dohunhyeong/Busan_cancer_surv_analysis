@@ -9,18 +9,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import KFold
-from lifelines import CoxPHFitter, WeibullAFTFitter, LogNormalAFTFitter
-from sksurv.ensemble import RandomSurvivalForest
-from sksurv.metrics import concordance_index_censored, cumulative_dynamic_auc
-import matplotlib.pyplot as plt
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-
-
 # Cox Proportional Hazards Model
 class CoxPHModel:
     def __init__(self, duration_col, event_col, penalizer=0.0, l1_ratio=0.0):
@@ -119,14 +107,31 @@ class Frailty:
         return self.model.predict_partial_hazard(test_data)
 
 
-# Cross-Validation Utility
+# CrossValidator class
 class CrossValidator:
     def __init__(self, data, duration_col, event_col):
         self.data = data
         self.duration_col = duration_col
         self.event_col = event_col
 
+    def train_model(self, model_class, train_data, **model_kwargs):
+        # 학습 데이터를 사용하여 모델 학습
+        model = model_class(self.duration_col, self.event_col, **model_kwargs)
+        model.fit(train_data)
+        return model
+
+    def evaluate_model(self, model, test_data):
+        # 테스트 데이터를 사용하여 C-index 계산
+        predictions = model.predict(test_data)
+        c_index = concordance_index_censored(
+            test_data[self.event_col] == 1,
+            test_data[self.duration_col],
+            predictions,
+        )[0]
+        return c_index
+
     def cross_validate(self, model_class, n_splits=5, **model_kwargs):
+        # 전체 교차 검증 프로세스
         kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         c_indices = []
 
@@ -134,15 +139,13 @@ class CrossValidator:
             train_data = self.data.iloc[train_index]
             test_data = self.data.iloc[test_index]
 
-            model = model_class(self.duration_col, self.event_col, **model_kwargs)
-            model.fit(train_data)
-            predictions = model.predict(test_data)
+            # 1. 모델 학습
+            model = self.train_model(model_class, train_data, **model_kwargs)
 
-            c_index = concordance_index_censored(
-                test_data[self.event_col] == 1,
-                test_data[self.duration_col],
-                predictions,
-            )[0]
+            # 2. 모델 평가
+            c_index = self.evaluate_model(model, test_data)
+
+            # 3. 결과 저장
             c_indices.append(c_index)
 
         return c_indices
@@ -235,7 +238,6 @@ class SurvivalDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.X[idx], self.durations[idx], self.events[idx]
-
 
 # Example usage
 # if __name__ == "__main__":
