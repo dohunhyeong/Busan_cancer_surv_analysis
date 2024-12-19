@@ -5,16 +5,33 @@ from lifelines import CoxPHFitter, WeibullAFTFitter, LogNormalAFTFitter
 from sksurv.ensemble import RandomSurvivalForest
 from sksurv.metrics import concordance_index_censored, cumulative_dynamic_auc
 import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import KFold
+from lifelines import CoxPHFitter, WeibullAFTFitter, LogNormalAFTFitter
+from sksurv.ensemble import RandomSurvivalForest
+from sksurv.metrics import concordance_index_censored, cumulative_dynamic_auc
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+
 
 # Cox Proportional Hazards Model
 class CoxPHModel:
-    def __init__(self, duration_col, event_col):
+    def __init__(self, duration_col, event_col, penalizer=0.0, l1_ratio=0.0):
         self.duration_col = duration_col
         self.event_col = event_col
-        self.model = CoxPHFitter()
+        self.model = CoxPHFitter(penalizer=penalizer, l1_ratio=l1_ratio)
 
     def fit(self, train_data):
-        self.model.fit(train_data, duration_col=self.duration_col, event_col=self.event_col)
+        self.model.fit(
+            train_data, duration_col=self.duration_col, event_col=self.event_col
+        )
         return self
 
     def predict(self, test_data):
@@ -29,7 +46,9 @@ class WeibullAFTModel:
         self.model = WeibullAFTFitter()
 
     def fit(self, train_data):
-        self.model.fit(train_data, duration_col=self.duration_col, event_col=self.event_col)
+        self.model.fit(
+            train_data, duration_col=self.duration_col, event_col=self.event_col
+        )
         return self
 
     def predict(self, test_data):
@@ -44,7 +63,9 @@ class LogNormalAFTModel:
         self.model = LogNormalAFTFitter()
 
     def fit(self, train_data):
-        self.model.fit(train_data, duration_col=self.duration_col, event_col=self.event_col)
+        self.model.fit(
+            train_data, duration_col=self.duration_col, event_col=self.event_col
+        )
         return self
 
     def predict(self, test_data):
@@ -75,6 +96,29 @@ class RandomSurvivalForestModel:
         return -self.model.predict(X)
 
 
+# Frailty Model
+class Frailty:
+    def __init__(
+        self, duration_col, event_col, strata_col, penalizer=0.0, l1_ratio=0.0
+    ):
+        self.duration_col = duration_col
+        self.event_col = event_col
+        self.strata_col = strata_col
+        self.model = CoxPHFitter(penalizer=penalizer, l1_ratio=l1_ratio)
+
+    def fit(self, train_data):
+        self.model.fit(
+            train_data,
+            duration_col=self.duration_col,
+            event_col=self.event_col,
+            strata=self.strata_col,
+        )
+        return self
+
+    def predict(self, test_data):
+        return self.model.predict_partial_hazard(test_data)
+
+
 # Cross-Validation Utility
 class CrossValidator:
     def __init__(self, data, duration_col, event_col):
@@ -97,7 +141,7 @@ class CrossValidator:
             c_index = concordance_index_censored(
                 test_data[self.event_col] == 1,
                 test_data[self.duration_col],
-                predictions
+                predictions,
             )[0]
             c_indices.append(c_index)
 
@@ -133,13 +177,16 @@ class CrossValidator:
                 )
 
                 survival_functions = model.model.predict_survival_function(X_test)
-                predictions = np.row_stack([
-                    fn(time_points) for fn in survival_functions
-                ])
+                predictions = np.row_stack(
+                    [fn(time_points) for fn in survival_functions]
+                )
 
                 for time_point in time_points:
                     auc, _ = cumulative_dynamic_auc(
-                        y_train, y_test, predictions[:, time_points.index(time_point)], time_point
+                        y_train,
+                        y_test,
+                        predictions[:, time_points.index(time_point)],
+                        time_point,
                     )
                     auc_results.append((time_point, auc))
 
@@ -159,6 +206,35 @@ class CrossValidator:
         plt.title(f"Cross-Validation C-index Scores for {model_name}")
         plt.grid(axis="y", linestyle="--", alpha=0.7)
         plt.show()
+
+
+# DeepSurv 모델 정의
+class DeepSurv(nn.Module):
+    def __init__(self, input_dim, activation_fn=nn.ReLU):
+        super(DeepSurv, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, 1)
+        self.activation_fn = activation_fn()
+
+    def forward(self, x):
+        x = self.activation_fn(self.fc1(x))
+        x = self.activation_fn(self.fc2(x))
+        return self.fc3(x)
+
+
+# Dataset 정의
+class SurvivalDataset(Dataset):
+    def __init__(self, X, y):
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.durations = torch.tensor(y[:, 0], dtype=torch.float32)
+        self.events = torch.tensor(y[:, 1], dtype=torch.float32)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.durations[idx], self.events[idx]
 
 
 # Example usage
