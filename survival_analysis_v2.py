@@ -3,11 +3,12 @@ import pandas as pd
 from sklearn.model_selection import KFold
 from lifelines import CoxPHFitter, WeibullAFTFitter, LogNormalAFTFitter
 from sksurv.ensemble import RandomSurvivalForest
-from sksurv.metrics import concordance_index_censored, cumulative_dynamic_auc, brier_score
+from sksurv.metrics import concordance_index_censored
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
+from sksurv.metrics import brier_score as sk_brier_score
 
 # Cox Proportional Hazards Model
 class CoxPHModel:
@@ -130,8 +131,12 @@ class CrossValidator:
         )[0]
         return c_index
 
+
+
     def calculate_brier_score(self, model, test_data, times):
-        # Brier Score 계산
+        # times가 이미 float으로 변환되어 있음
+
+        # 테스트 데이터를 구조화된 배열로 변환
         y_test_structured = np.array(
             [
                 (row[self.event_col] == 1, row[self.duration_col])
@@ -139,17 +144,30 @@ class CrossValidator:
             ],
             dtype=[("event", bool), ("time", float)],
         )
-        survival_probs = model.model.predict_survival_function(
-            test_data.drop(columns=[self.duration_col, self.event_col]), times=times
-        ).T
-        brier_scores = brier_score(y_test_structured, survival_probs, times=times)
+
+        # 생존 확률 계산 (생존 확률 함수 반환)
+        survival_functions = model.model.predict_survival_function(
+            test_data.drop(columns=[self.duration_col, self.event_col])
+        )
+
+        # 각 시간점에 대해 생존 확률을 2D 배열로 변환
+        survival_probs = np.row_stack([fn(times) for fn in survival_functions])
+
+        # Brier Score 계산
+        brier_scores = sk_brier_score(y_test_structured, survival_probs, times)
         return brier_scores
 
+
+
+    # 수정된 cross_validate 메서드 내에서 float 변환
     def cross_validate(self, model_class, n_splits=5, **model_kwargs):
         # 전체 교차 검증 프로세스
         kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         c_indices = []
         brier_scores_list = []
+
+        # 공통 시간점 생성 (float으로 변환)
+        all_times = np.linspace(1, float(self.data[self.duration_col].max()), 50)
 
         for train_index, test_index in kf.split(self.data):
             train_data = self.data.iloc[train_index]
@@ -158,16 +176,17 @@ class CrossValidator:
             # 1. 모델 학습
             model = self.train_model(model_class, train_data, **model_kwargs)
 
-            # 2. 모델 평가
+            # 2. C-index 계산
             c_index = self.evaluate_model(model, test_data)
             c_indices.append(c_index)
 
             # 3. Brier Score 계산
-            times = np.linspace(1, test_data[self.duration_col].max(), 50)
-            brier_scores = self.calculate_brier_score(model, test_data, times)
+            brier_scores = self.calculate_brier_score(model, test_data, all_times)
             brier_scores_list.append(brier_scores)
 
         return c_indices, brier_scores_list
+
+
 
     def plot_c_index(self, c_indices, model_name):
         """
@@ -202,6 +221,7 @@ class CrossValidator:
         plt.legend()
         plt.grid()
         plt.show()
+
 
 
 # DeepSurv 모델 정의
