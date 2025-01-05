@@ -102,7 +102,9 @@ class Frailty:
         self.duration_col = duration_col
         self.event_col = event_col
         self.strata_col = strata_col
-        self.model = CoxPHFitter(penalizer=penalizer, l1_ratio=l1_ratio)
+        self.model = CoxPHFitter(
+            strata=strata_col, penalizer=penalizer, l1_ratio=l1_ratio
+        )
 
     def fit(self, train_data):
         self.model.fit(
