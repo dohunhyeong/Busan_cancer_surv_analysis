@@ -195,7 +195,7 @@ class CrossValidator:
 
         return auc_results
 
-    def plot_c_index(self, c_indices, model_name):
+    def plot_c_index(c_indices, model_name):
         """
         Plot a boxplot of the C-index scores for the selected model.
 
@@ -203,11 +203,32 @@ class CrossValidator:
         - c_indices: A list with fold-wise C-index scores.
         - model_name: The name of the model for labeling.
         """
-        plt.figure(figsize=(8, 5))
-        plt.boxplot(c_indices, vert=True, patch_artist=True, labels=["C-index"])
-        plt.ylabel("C-index")
-        plt.title(f"Cross-Validation C-index Scores for {model_name}")
-        plt.grid(axis="y", linestyle="--", alpha=0.7)
+        # Boxplot 생성
+        fig, ax = plt.subplots(figsize=(8, 5), facecolor="white")  # 전체 배경 하얀색
+        box = ax.boxplot(
+            c_indices,
+            vert=True,
+            patch_artist=True,  # 박스 색상 변경 가능
+            labels=["C-index"],
+            boxprops=dict(facecolor="lightblue", color="black"),  # 박스 색과 테두리
+            whiskerprops=dict(color="black"),  # 수염 색상
+            capprops=dict(color="black"),  # 끝 캡 색상
+            medianprops=dict(color="yellow"),  # 중간선 색상
+            flierprops=dict(
+                markerfacecolor="red", markeredgecolor="black"
+            ),  # 아웃라이어 스타일
+        )
+
+        # 텍스트 및 축 스타일 설정
+        ax.set_ylabel("C-index", color="black")
+        ax.set_title(f"Cross-Validation C-index Scores for {model_name}", color="black")
+        ax.tick_params(colors="black")  # x축, y축 눈금 색상
+
+        # 격자 스타일 설정
+        ax.grid(axis="y", linestyle="--", color="lightgray", alpha=0.7)
+
+        # 레이아웃 및 표시
+        plt.tight_layout()
         plt.show()
 
 

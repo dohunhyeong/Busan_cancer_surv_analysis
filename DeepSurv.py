@@ -9,27 +9,8 @@ from sksurv.metrics import concordance_index_censored
 
 # Load data
 data = pd.read_csv("C:/Users/user/Desktop/survival_data/DISEASE/colon.csv", index_col=0)
-
-# Load data
-data = pd.read_csv("C:/Users/user/Desktop/survival_data/DISEASE/colon.csv", index_col=0)
 duration_col = "stime"
 event_col = "event_inc"
-
-# Preprocess data
-data = data[
-    [
-        "stime",
-        "event_inc",
-        "tx_1",
-        "tx_2",
-        "tx_3",
-        "tx_4",
-        "tx_5",
-        "seer_TF",
-        "gu_encoded",
-    ]
-]
-data["stime"] = data["stime"].apply(lambda x: 0.01 if x <= 0 else x)
 
 # Preprocess data
 data = data[
