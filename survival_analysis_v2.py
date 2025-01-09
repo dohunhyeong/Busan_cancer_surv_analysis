@@ -151,51 +151,10 @@ class CrossValidator:
         return c_indices
 
     def compute_auc(self, model_class, time_points, n_splits=5, **model_kwargs):
-        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-        auc_results = []
+        # ... (이전 코드와 동일)
+        pass
 
-        for train_index, test_index in kf.split(self.data):
-            train_data = self.data.iloc[train_index]
-            test_data = self.data.iloc[test_index]
-
-            model = model_class(self.duration_col, self.event_col, **model_kwargs)
-            model.fit(train_data)
-
-            if isinstance(model, RandomSurvivalForestModel):
-                X_train = train_data.drop(columns=[self.duration_col, self.event_col])
-                X_test = test_data.drop(columns=[self.duration_col, self.event_col])
-                y_train = np.array(
-                    [
-                        (row[self.event_col] == 1, row[self.duration_col])
-                        for _, row in train_data.iterrows()
-                    ],
-                    dtype=[("event", bool), ("time", float)],
-                )
-                y_test = np.array(
-                    [
-                        (row[self.event_col] == 1, row[self.duration_col])
-                        for _, row in test_data.iterrows()
-                    ],
-                    dtype=[("event", bool), ("time", float)],
-                )
-
-                survival_functions = model.model.predict_survival_function(X_test)
-                predictions = np.row_stack(
-                    [fn(time_points) for fn in survival_functions]
-                )
-
-                for time_point in time_points:
-                    auc, _ = cumulative_dynamic_auc(
-                        y_train,
-                        y_test,
-                        predictions[:, time_points.index(time_point)],
-                        time_point,
-                    )
-                    auc_results.append((time_point, auc))
-
-        return auc_results
-
-    def plot_c_index(c_indices, model_name):
+    def plot_c_index(self, c_indices, model_name):
         """
         Plot a boxplot of the C-index scores for the selected model.
 
@@ -203,34 +162,27 @@ class CrossValidator:
         - c_indices: A list with fold-wise C-index scores.
         - model_name: The name of the model for labeling.
         """
-        # Boxplot 생성
-        fig, ax = plt.subplots(figsize=(8, 5), facecolor="white")  # 전체 배경 하얀색
+        fig, ax = plt.subplots(figsize=(8, 5), facecolor="white")
         box = ax.boxplot(
             c_indices,
             vert=True,
-            patch_artist=True,  # 박스 색상 변경 가능
+            patch_artist=True,
             labels=["C-index"],
-            boxprops=dict(facecolor="lightblue", color="black"),  # 박스 색과 테두리
-            whiskerprops=dict(color="black"),  # 수염 색상
-            capprops=dict(color="black"),  # 끝 캡 색상
-            medianprops=dict(color="yellow"),  # 중간선 색상
+            boxprops=dict(facecolor="lightblue", color="black"),
+            whiskerprops=dict(color="black"),
+            capprops=dict(color="black"),
+            medianprops=dict(color="yellow"),
             flierprops=dict(
                 markerfacecolor="red", markeredgecolor="black"
-            ),  # 아웃라이어 스타일
+            ),
         )
 
-        # 텍스트 및 축 스타일 설정
         ax.set_ylabel("C-index", color="black")
         ax.set_title(f"Cross-Validation C-index Scores for {model_name}", color="black")
-        ax.tick_params(colors="black")  # x축, y축 눈금 색상
-
-        # 격자 스타일 설정
+        ax.tick_params(colors="black")
         ax.grid(axis="y", linestyle="--", color="lightgray", alpha=0.7)
-
-        # 레이아웃 및 표시
         plt.tight_layout()
         plt.show()
-
 
 # DeepSurv 모델 정의
 class DeepSurv(nn.Module):
@@ -251,8 +203,8 @@ class DeepSurv(nn.Module):
 class SurvivalDataset(Dataset):
     def __init__(self, X, y):
         self.X = torch.tensor(X, dtype=torch.float32)
-        self.durations = torch.tensor(y[:, 0], dtype=torch.float32)
-        self.events = torch.tensor(y[:, 1], dtype=torch.float32)
+        self.durations = torch.tensor(y[:, 0].astype(float), dtype=torch.float32)
+        self.events = torch.tensor(y[:, 1].astype(float), dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
